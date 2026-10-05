@@ -26,7 +26,8 @@ To start your own plugin, use the
    **Open dev plugins folder**.
 2. Clone this repository into that folder.
 
-While developer mode is on, the copy in the dev folder runs instead of the one installed from the hub.
+While developer mode is on, the copy in the dev folder runs instead of the one installed from the hub. It uses the
+same saved data, so a goal you change there is changed for the installed plugin too.
 
 ## Checks
 

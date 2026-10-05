@@ -334,9 +334,10 @@ declare namespace FourFold {
     };
 
     /**
-     * Opens an `https` link in the user's default browser. The link must be on one of the plugin's `sites`
-     * (`site-not-allowed` otherwise). It works only while the plugin's panel is showing, and only right after the
-     * user clicks or presses a key in your page (`unavailable` otherwise). At most one link every 2 seconds.
+     * Opens an `https` link in the user's default browser. The link must be on one of the plugin's `sites`, or on
+     * any public host if the plugin has `anySite` and FourFold honors it (`site-not-allowed` otherwise). It works
+     * only while the plugin's panel is showing, and only right after the user clicks or presses a key in your page
+     * (`unavailable` otherwise). At most one link every 2 seconds.
      */
     openExternal(url: string): Promise<void>;
 
