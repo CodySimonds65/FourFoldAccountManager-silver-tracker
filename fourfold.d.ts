@@ -7,6 +7,9 @@
 //
 // This file is for your editor only. FourFold provides window.fourfold itself, before your scripts run, and never
 // serves a .ts file, so this file is not part of your plugin and the hub leaves it out of the package.
+//
+// Many values can be null. With the template's jsconfig.json an editor shows `number | null` as plain `number`, so
+// each field's description says when it is null. Read it before you use a value.
 
 declare namespace FourFold {
   /**
@@ -28,6 +31,7 @@ declare namespace FourFold {
    * fourfold.storage.set('goals', goals).catch(error => console.warn(error.code, error.message));
    */
   interface ApiError extends Error {
+    /** Which kind of rule was broken. */
     code: ErrorCode;
   }
 
@@ -52,7 +56,9 @@ declare namespace FourFold {
 
   /** One class's level and XP. */
   interface ClassXp {
+    /** The class's name. */
     className: string;
+    /** The class's level. */
     level: number;
     /** XP earned so far toward the next level. */
     currentXp: number;
@@ -62,28 +68,29 @@ declare namespace FourFold {
 
   /**
    * An account's XP, as FourFold's own XP tracker reads it: about once a minute, and only while the account is
-   * open. For a closed account the number and text fields are `null`, `classes` is empty and `isStale` is `true`.
+   * open. For a closed account, and for an open one that hasn't been read yet, the number and text fields are
+   * `null`, `classes` is empty and `isStale` is `true`.
    */
   interface Xp {
-    /** The active class. */
+    /** The active class. `null` until the account has been read, and for a closed account. */
     className: string | null;
-    /** The active class's level. */
+    /** The active class's level. `null` until the account has been read, and for a closed account. */
     level: number | null;
-    /** XP earned so far toward the next level. */
+    /** XP earned so far toward the next level. `null` until the account has been read, and for a closed account. */
     currentXp: number | null;
-    /** XP the current level needs in total. */
+    /** XP the current level needs in total. `null` until the account has been read, and for a closed account. */
     nextLevelXp: number | null;
-    /** `nextLevelXp - currentXp`. */
+    /** `nextLevelXp - currentXp`. `null` when either is unknown. */
     xpUntilNextLevel: number | null;
     /** At the current XP/hr. `null` when there is no rate yet. */
     hoursUntilNextLevel: number | null;
-    /** The current rate. */
+    /** The current rate. `null` until there is enough data for one. */
     xpPerHour: number | null;
     /** XP gained this session. `0` when unknown. */
     sessionXp: number;
     /** Every class. May be empty. */
     classes: ClassXp[];
-    /** Time of the last successful read, as an ISO 8601 date. */
+    /** Time of the last successful read, as an ISO 8601 date. `null` before the first one, and for a closed account. */
     updatedAt: string | null;
     /** `true` when there is no XP data yet, when the last read failed, and for a closed account. */
     isStale: boolean;
@@ -94,26 +101,41 @@ declare namespace FourFold {
    * or `null` when unknown. An empty slot comes through as the page's own word for it (`Empty`, say), not `null`.
    */
   interface Equipment {
+    /** The armor slot. `null` when unknown. */
     armor: string | null;
+    /** The helmet slot. `null` when unknown. */
     helmet: string | null;
+    /** The hair slot. `null` when unknown. */
     hair: string | null;
+    /** The weapon slot. `null` when unknown. */
     weapon: string | null;
   }
 
-  /** The active class's stats. `hp` to `resistance` are `null` when unknown. */
+  /** The active class's stats. */
   interface Stats {
+    /** The active class. */
     className: string;
+    /** The active class's level. */
     level: number;
+    /** HP. `null` when unknown. */
     hp: number | null;
+    /** SP. `null` when unknown. */
     sp: number | null;
+    /** Attack. `null` when unknown. */
     attack: number | null;
+    /** Magic. `null` when unknown. */
     magic: number | null;
+    /** Skill. `null` when unknown. */
     skill: number | null;
+    /** Speed. `null` when unknown. */
     speed: number | null;
+    /** Luck. `null` when unknown. */
     luck: number | null;
+    /** Defense. `null` when unknown. */
     defense: number | null;
+    /** Resistance. `null` when unknown. */
     resistance: number | null;
-    /** Needs `"apiVersion": 2` in `plugin.json`. */
+    /** What the class has equipped. Needs `"apiVersion": 2` in `plugin.json`. */
     equipment: Equipment;
   }
 
@@ -123,18 +145,24 @@ declare namespace FourFold {
    * `isStale` is `true`. For a closed account the number and text fields are `null`.
    */
   interface Profile {
-    /** The account's silver. */
+    /** The account's silver. `null` until the account has been read, and for a closed account. */
     silver: number | null;
-    /** The account's gold. */
+    /** The account's gold. `null` until the account has been read, and for a closed account. */
     gold: number | null;
-    /** Where the character is, as the profile page words it. At most 64 characters. */
+    /**
+     * Where the character is, as the profile page words it. At most 64 characters. `null` until the account has
+     * been read, and for a closed account.
+     */
     location: string | null;
     /**
      * The account's public player id. Like `inGameName`, it is `null` unless the user has filled in that
      * account's Ranking username, and until the profile has been read under that name.
      */
     playerId: number | null;
-    /** Time of the last successful read, as an ISO 8601 date. It only changes with a new read. */
+    /**
+     * Time of the last successful read, as an ISO 8601 date. It only changes with a new read. `null` before the
+     * first one, and for a closed account.
+     */
     updatedAt: string | null;
     /** `true` when there is no data yet, when the last read failed, and for a closed account. */
     isStale: boolean;
@@ -142,16 +170,21 @@ declare namespace FourFold {
 
   /** One lap of the timer. */
   interface Lap {
+    /** The lap's number. */
     number: number;
+    /** How long this lap took, in milliseconds. */
     lapMs: number;
+    /** The time on the timer when this lap ended, in milliseconds. */
     totalMs: number;
   }
 
   /** FourFold's timer. */
   interface Timer {
+    /** Whether the timer is waiting to start, running, or stopped at its final time. */
     state: 'ready' | 'running' | 'finished';
     /** The time on the timer when you asked. Animate from it yourself: there are no tick events. */
     elapsedMs: number;
+    /** The laps so far. Empty when there are none. */
     laps: Lap[];
   }
 
@@ -187,7 +220,7 @@ declare namespace FourFold {
     label: string;
     /** At most 40 characters. Convert numbers with `String()`: anything that isn't a string is drawn empty. */
     value: string;
-    /** A number from 0 to 1 draws a thin bar under the row. */
+    /** A number from 0 to 1 draws a thin bar under the row. Leave it out, or pass `null`, for no bar. */
     progress?: number | null;
   }
 
@@ -221,8 +254,11 @@ declare namespace FourFold {
 
   /** Copied from your `plugin.json`. */
   interface PluginInfo {
+    /** The plugin's `id`. */
     id: string;
+    /** The plugin's `version`, such as `1.0.0`. */
     version: string;
+    /** The `apiVersion` the plugin declares. */
     apiVersion: number;
   }
 
@@ -236,6 +272,7 @@ declare namespace FourFold {
     /** FourFold's colors. The palette is fixed while the plugin runs. */
     readonly theme: Readonly<Theme>;
 
+    /** The user's accounts. */
     readonly accounts: {
       /** Every account the user has in FourFold, open or closed. */
       list(): Promise<Account[]>;
@@ -246,6 +283,7 @@ declare namespace FourFold {
       onChanged(callback: () => void): Unsubscribe;
     };
 
+    /** An account's class, level and XP rate. */
     readonly xp: {
       /** An account's XP. An id that isn't one of the user's accounts is rejected with `invalid-argument`. */
       get(accountId: string): Promise<Xp>;
@@ -256,6 +294,7 @@ declare namespace FourFold {
       onUpdated(callback: (event: { accountId: string }) => void): Unsubscribe;
     };
 
+    /** The active class's stats and equipment. */
     readonly stats: {
       /**
        * The active class's stats, or `null` when the account is closed or hasn't been read yet. There is no stats
@@ -264,6 +303,7 @@ declare namespace FourFold {
       get(accountId: string): Promise<Stats | null>;
     };
 
+    /** Silver, gold, location and player id. Needs `"apiVersion": 2` in `plugin.json`. */
     readonly profile: {
       /**
        * Silver, gold, location and player id from the account's public profile page. Needs `"apiVersion": 2` in
@@ -273,6 +313,7 @@ declare namespace FourFold {
       get(accountId: string): Promise<Profile>;
     };
 
+    /** FourFold's timer. */
     readonly timer: {
       /** The timer's state, the time on it and its laps. */
       get(): Promise<Timer>;
@@ -280,6 +321,7 @@ declare namespace FourFold {
       onChanged(callback: () => void): Unsubscribe;
     };
 
+    /** Web requests made by FourFold on the plugin's behalf. */
     readonly http: {
       /**
        * Makes a web request from FourFold, not from your page, so it isn't subject to CORS. The site must be in
@@ -320,7 +362,7 @@ declare namespace FourFold {
        * characters with `invalid-argument`.
        */
       set(cardId: string, accountId: string | null, content: CardContent): Promise<void>;
-      /** Empties a card. */
+      /** Empties a card. `accountId` is as for `set`: an account id for an `account` card, `null` for a `global` one. */
       clear(cardId: string, accountId: string | null): Promise<void>;
     };
   }
@@ -330,5 +372,6 @@ declare namespace FourFold {
 declare const fourfold: FourFold.Api;
 
 interface Window {
+  /** The same object as the global `fourfold`. */
   readonly fourfold: FourFold.Api;
 }
