@@ -13,6 +13,7 @@ let goals = {};
 // The live game feed (plugin API 3): missing on an older FourFold, and only used while its status is active.
 const hasFeed = typeof fourfold.battle?.onResult === 'function';
 let feedActive = false;
+let open = []; // the open accounts from the latest refresh, which the once-a-second redraw works from
 
 const whole = value => Math.round(value).toLocaleString('en-US');
 const signed = value => (value > 0 ? '+' : '') + whole(value);
@@ -153,7 +154,7 @@ function paint(views) {
 }
 
 async function refresh() {
-  const open = (await fourfold.accounts.list()).filter(account => account.isOpen);
+  open = (await fourfold.accounts.list()).filter(account => account.isOpen);
   // A closed account's session is over, and its card goes with it.
   for (const id of [...sessions.keys()]) {
     if (open.every(account => account.id !== id)) {
@@ -178,6 +179,7 @@ async function refresh() {
     views.push(view);
   }
   paint(views);
+  syncTimer();
 }
 
 // Events arrive in bursts (xp.onUpdated fires once per account, the feed once per fight). Refreshes run one after
@@ -192,6 +194,35 @@ function render() {
     return refresh();
   }).catch(error => console.warn(error.code ?? error.message));
   return queue;
+}
+
+// While an account is live, its rate falls every second between fights, so the panel redraws once a second. Only the
+// panel: cards and saved goals keep the refresh's schedule. A tick waits its turn behind a refresh, and at most one
+// waits.
+let timer = null;
+let ticking = false;
+let pressed = false; // a mouse button is held: a redraw could disturb a click on the box or the Reset button
+document.addEventListener('pointerdown', () => { pressed = true; }, true);
+for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { pressed = false; }, true);
+
+function syncTimer() {
+  const live = [...sessions.values()].some(session => session.live);
+  if (live && timer === null) timer = setInterval(tick, 1000);
+  else if (!live && timer !== null) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+function tick() {
+  if (ticking) return;
+  ticking = true;
+  queue = queue.then(() => {
+    ticking = false;
+    // A Reset just ended a session: its refresh is next, and painting without that account would drop its block.
+    if (pressed || open.some(account => !sessions.has(account.id))) return;
+    paint(open.map(account => describe(account, sessions.get(account.id))));
+  }).catch(error => console.warn(error.code ?? error.message));
 }
 
 async function saveGoals() {
