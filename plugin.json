@@ -2,7 +2,7 @@
   "id": "fourfold.silver-tracker",
   "name": "Silver tracker",
   "shortLabel": "Silver",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "FourFold",
   "description": "Silver per hour, session totals and a silver goal for each open account.",
   "apiVersion": 2,

@@ -1,12 +1,18 @@
 // Silver tracker: silver earned per hour, session totals and a silver goal for each open account, in the panel and
-// on a card. The maths is in rate.mjs.
-import { applyRead, createSession, parseGoal, rateAt, statusOf, toGoal } from './rate.mjs';
+// on a card. The maths is in rate.mjs. Earned silver comes from the live game feed's fights where FourFold has it,
+// and from profile reads otherwise; the balance always comes from the reads, because the feed doesn't see spending.
+import {
+  applyLiveResult, applyRead, createSession, endLive, parseGoal, rateNow, startLive, statusOf, toGoal
+} from './rate.mjs';
 
 const container = document.getElementById('accounts');
 const empty = document.getElementById('empty');
 const sessions = new Map(); // account id -> session; open accounts only
 const blocks = new Map(); // account id -> that account's elements in the panel
 let goals = {};
+// The live game feed (plugin API 3): missing on an older FourFold, and only used while its status is active.
+const hasFeed = typeof fourfold.battle?.onResult === 'function';
+let feedActive = false;
 
 const whole = value => Math.round(value).toLocaleString('en-US');
 const signed = value => (value > 0 ? '+' : '') + whole(value);
@@ -28,9 +34,10 @@ function goalText(left) {
 
 // Everything one account's block and card show.
 function describe(account, session) {
+  const now = Date.now();
   const tracked = session.lastAt !== null;
   const balance = tracked ? session.lastBalance : null;
-  const rate = tracked ? rateAt(session, session.lastAt) : null;
+  const rate = rateNow(session, now);
   const goal = goalFor(account.id);
   return {
     id: account.id,
@@ -41,7 +48,7 @@ function describe(account, session) {
     net: tracked ? balance - session.startBalance : null,
     goal,
     left: goal !== null && tracked ? toGoal(goal, balance, rate) : null,
-    status: statusOf(session)
+    status: statusOf(session, now)
   };
 }
 
@@ -159,6 +166,11 @@ async function refresh() {
   for (const account of open) {
     let session = sessions.get(account.id);
     if (!session) sessions.set(account.id, (session = createSession()));
+    // Live only while the feed is watching this account: location.get has a place for it. One already in game when
+    // the feed was switched on has none until its game reconnects, and stays on reads.
+    const watched = feedActive && (await fourfold.location.get(account.id).catch(() => null)) !== null;
+    if (watched) startLive(session, Date.now());
+    else endLive(session);
     applyRead(session, await fourfold.profile.get(account.id));
     const view = describe(account, session);
     // A refused card must not stop the panel from updating.
@@ -187,6 +199,25 @@ async function start() {
   goals = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   fourfold.accounts.onChanged(render);
   fourfold.xp.onUpdated(render);
+  if (hasFeed) {
+    feedActive = (await fourfold.live.getStatus().catch(() => null))?.state === 'active';
+    fourfold.live.onStatusChanged(status => {
+      feedActive = status.state === 'active';
+      render();
+    });
+    fourfold.location.onChanged(render);
+    fourfold.session.onDisconnected(({ accountId }) => {
+      const session = sessions.get(accountId);
+      if (session) endLive(session);
+      render();
+    });
+    fourfold.battle.onResult(({ accountId, silverGained, at }) => {
+      const session = sessions.get(accountId);
+      if (!session?.live) return;
+      applyLiveResult(session, silverGained, Date.parse(at));
+      render();
+    });
+  }
   await render();
 }
 

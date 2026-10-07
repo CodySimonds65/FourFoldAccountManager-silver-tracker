@@ -1,8 +1,12 @@
 // Checks rate.mjs outside FourFold. Run: node .check/rate.check.mjs
 import assert from 'node:assert/strict';
-import { applyRead, createSession, parseGoal, rateAt, statusOf, toGoal } from '../rate.mjs';
+import {
+  LIVE_RATE_MIN_MS, applyLiveResult, applyRead, createSession, endLive, parseGoal, rateAt, rateNow, startLive, statusOf,
+  toGoal
+} from '../rate.mjs';
 
-const at = minutes => new Date(Date.UTC(2026, 9, 4, 12, 0) + minutes * 60000).toISOString();
+const ms = minutes => Date.UTC(2026, 9, 4, 12, 0) + minutes * 60000;
+const at = minutes => new Date(ms(minutes)).toISOString();
 const read = (silver, minutes, isStale = false) => ({ silver, updatedAt: at(minutes), isStale });
 const feed = (...reads) => {
   const session = createSession();
@@ -43,20 +47,57 @@ assert.equal(session.earned, 100);
 
 // The status never calls old numbers live. If the page stops giving silver while the read itself still succeeds,
 // the account shows as stale until silver is back.
-assert.equal(statusOf(createSession()), 'No data yet');
-assert.equal(statusOf(feed(read(1000, 0))), 'Collecting baseline');
-assert.equal(statusOf(feed(read(1000, 0), read(1600, 1))), 'Tracking');
+assert.equal(statusOf(createSession(), 0), 'No data yet');
+assert.equal(statusOf(feed(read(1000, 0)), 0), 'Collecting baseline');
+assert.equal(statusOf(feed(read(1000, 0), read(1600, 1)), 0), 'Tracking (polled)');
 session = feed(read(1000, 0), read(1600, 1), { silver: null, updatedAt: at(2), isStale: false });
-assert.equal(statusOf(session), 'Stale; the last read failed');
+assert.equal(statusOf(session, 0), 'Stale; the last read failed');
 applyRead(session, read(1700, 3));
-assert.equal(statusOf(session), 'Tracking');
-assert.equal(statusOf(feed(read(1000, 0), read(1000, 0, true))), 'Stale; the last read failed');
+assert.equal(statusOf(session, 0), 'Tracking (polled)');
+assert.equal(statusOf(feed(read(1000, 0), read(1000, 0, true)), 0), 'Stale; the last read failed');
 
 // Only the last hour counts. An interval that ended before it is dropped; one that straddles it counts in part.
 session = feed(read(0, 0), read(60000, 1), read(60000, 90), read(60000, 91));
 assert.equal(rate(session), 0);
 assert.equal(session.earned, 60000);
 assert.equal(Math.round(rate(feed(read(0, 0), read(1200, 120)))), 600);
+
+// Live: each fight's silver counts once. A read while live only updates the balance, even when it shows the same
+// fights' silver, so nothing is counted twice.
+session = feed(read(1000, 0));
+startLive(session, ms(1));
+applyLiveResult(session, 300, ms(2));
+applyRead(session, read(1300, 2.5));
+applyLiveResult(session, 300, ms(3));
+assert.equal(session.earned, 600);
+assert.equal(session.lastBalance, 1300);
+// A late or repeated fight adds nothing.
+applyLiveResult(session, 300, ms(3));
+applyLiveResult(session, 300, ms(2));
+assert.equal(session.earned, 600);
+// 600 over the 2 watched minutes is 18,000 an hour; 4 more idle minutes bring it down to 6,000.
+assert.equal(Math.round(rateNow(session, ms(3))), 18000);
+assert.equal(Math.round(rateNow(session, ms(7))), 6000);
+assert.equal(statusOf(session, ms(7)), 'Live');
+
+// No live rate until a minute has been watched: the first fight can't read as millions an hour.
+session = createSession();
+startLive(session, ms(0));
+applyLiveResult(session, 500, ms(0.25));
+assert.equal(rateNow(session, ms(0) + LIVE_RATE_MIN_MS - 1), null);
+assert.notEqual(rateNow(session, ms(0) + LIVE_RATE_MIN_MS), null);
+
+// Back to reads after a live stretch: the first read is a new baseline, because its silver since the last read was
+// already counted from the fights. The read after it measures as usual.
+session = feed(read(1000, 0));
+startLive(session, ms(0.5));
+applyLiveResult(session, 400, ms(1));
+endLive(session);
+applyRead(session, read(1400, 2));
+assert.equal(session.earned, 400);
+applyRead(session, read(1500, 3));
+assert.equal(session.earned, 500);
+assert.equal(statusOf(session, ms(3)), 'Tracking (polled)');
 
 // A goal is a whole number above zero, with commas or spaces as separators. Anything else is no goal.
 assert.equal(parseGoal('1,000,000'), 1000000);

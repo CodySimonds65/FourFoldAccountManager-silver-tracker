@@ -4,6 +4,11 @@ A plugin for [FourFold Account Manager](https://github.com/CodySimonds65/FourFol
 account it shows the silver earned per hour, the session's earned and net totals, and a silver goal with the time it
 takes at the current rate. An overlay card shows the same.
 
+Where FourFold has the live game feed, the silver earned comes from each fight as it ends, so the rate moves at once
+and falls while an account is idle. Otherwise, or when the feed is switched off or unavailable, it comes from the
+account's profile, read about once a minute. The status line says which: **Live** or **Tracking (polled)**. The
+balance always comes from the profile, because the feed doesn't see spending.
+
 It is listed on the [plugin hub](https://github.com/CodySimonds65/FourFoldAccountManager-plugin-hub), so FourFold
 users install it from the plugin list: the wrench in the plugin strip, then **Plugin hub**.
 
@@ -12,6 +17,8 @@ users install it from the plugin list: the wrench in the plugin strip, then **Pl
 Silver tracker is also a worked example for plugin authors. It shows:
 
 - reading `fourfold.profile`, which needs `"apiVersion": 2` in `plugin.json`;
+- using the live game feed only where it's there, with `fourfold.profile` as the fallback, so the plugin keeps
+  `"apiVersion": 2` and still runs on an older FourFold;
 - keeping the maths in a module, `rate.mjs`, that touches neither the page nor `window.fourfold`;
 - a check for that module that runs outside FourFold, in `.check/`. The hub leaves the folder out of the package,
   because its name starts with a dot.
