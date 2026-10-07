@@ -6,8 +6,10 @@ takes at the current rate. An overlay card shows the same.
 
 Where FourFold has the live game feed, the silver earned comes from each fight as it ends, so the rate moves at once
 and falls while an account is idle. Otherwise, or when the feed is switched off or unavailable, it comes from the
-account's profile, read about once a minute. The status line says which: **Live** or **Tracking (polled)**. The
-balance always comes from the profile, because the feed doesn't see spending.
+account's profile, read about once a minute. The status line says which: **Live** or **Tracking (polled)**. A live
+account shows **Live; collecting a minute first** until a minute has been watched, so its first fight can't read as
+millions an hour. An account already in game when the feed is switched on stays on polling until its game
+reconnects. The balance always comes from the profile, because the feed doesn't see spending.
 
 It is listed on the [plugin hub](https://github.com/CodySimonds65/FourFoldAccountManager-plugin-hub), so FourFold
 users install it from the plugin list: the wrench in the plugin strip, then **Plugin hub**.

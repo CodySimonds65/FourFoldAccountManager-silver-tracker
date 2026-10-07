@@ -170,7 +170,7 @@ async function refresh() {
     // the feed was switched on has none until its game reconnects, and stays on reads.
     const watched = feedActive && (await fourfold.location.get(account.id).catch(() => null)) !== null;
     if (watched) startLive(session, Date.now());
-    else endLive(session);
+    else endLive(session, Date.now());
     applyRead(session, await fourfold.profile.get(account.id));
     const view = describe(account, session);
     // A refused card must not stop the panel from updating.
@@ -180,10 +180,19 @@ async function refresh() {
   paint(views);
 }
 
-// Events arrive in bursts (xp.onUpdated fires once per account), so refreshes run one after another, never
-// overlapping.
+// Events arrive in bursts (xp.onUpdated fires once per account, the feed once per fight). Refreshes run one after
+// another, and a burst asks for one more refresh, not one each.
 let queue = Promise.resolve();
-const render = () => (queue = queue.then(refresh).catch(error => console.warn(error.code ?? error.message)));
+let waiting = false;
+function render() {
+  if (waiting) return queue;
+  waiting = true;
+  queue = queue.then(() => {
+    waiting = false;
+    return refresh();
+  }).catch(error => console.warn(error.code ?? error.message));
+  return queue;
+}
 
 async function saveGoals() {
   // Goals for accounts that no longer exist go, so the store doesn't grow for ever.
@@ -199,16 +208,24 @@ async function start() {
   goals = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   fourfold.accounts.onChanged(render);
   fourfold.xp.onUpdated(render);
+  // A live rate falls while an account is idle, even when no read arrives to redraw it (reads failing, say).
+  setInterval(render, 60000);
   if (hasFeed) {
     feedActive = (await fourfold.live.getStatus().catch(() => null))?.state === 'active';
     fourfold.live.onStatusChanged(status => {
       feedActive = status.state === 'active';
       render();
     });
-    fourfold.location.onChanged(render);
+    // The account is live from its first place, not from the next refresh, so a fight that ends before that refresh
+    // (one resumed right after F5, say) still counts. An account without a session yet is left to the refresh.
+    fourfold.location.onChanged(({ accountId, scene }) => {
+      const session = sessions.get(accountId);
+      if (feedActive && scene !== null && session) startLive(session, Date.now());
+      render();
+    });
     fourfold.session.onDisconnected(({ accountId }) => {
       const session = sessions.get(accountId);
-      if (session) endLive(session);
+      if (session) endLive(session, Date.now());
       render();
     });
     fourfold.battle.onResult(({ accountId, silverGained, at }) => {

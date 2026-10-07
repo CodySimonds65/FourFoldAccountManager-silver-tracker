@@ -71,8 +71,7 @@ applyRead(session, read(1300, 2.5));
 applyLiveResult(session, 300, ms(3));
 assert.equal(session.earned, 600);
 assert.equal(session.lastBalance, 1300);
-// A late or repeated fight adds nothing.
-applyLiveResult(session, 300, ms(3));
+// A late fight adds nothing.
 applyLiveResult(session, 300, ms(2));
 assert.equal(session.earned, 600);
 // 600 over the 2 watched minutes is 18,000 an hour; 4 more idle minutes bring it down to 6,000.
@@ -87,17 +86,40 @@ applyLiveResult(session, 500, ms(0.25));
 assert.equal(rateNow(session, ms(0) + LIVE_RATE_MIN_MS - 1), null);
 assert.notEqual(rateNow(session, ms(0) + LIVE_RATE_MIN_MS), null);
 
-// Back to reads after a live stretch: the first read is a new baseline, because its silver since the last read was
-// already counted from the fights. The read after it measures as usual.
+// Two results with the same time are one batch of game data: both count, in the same interval.
+session = createSession();
+startLive(session, ms(0));
+applyLiveResult(session, 300, ms(2));
+applyLiveResult(session, 200, ms(2));
+assert.equal(session.earned, 500);
+assert.deepEqual(session.intervals.map(interval => interval.gain), [500]);
+
+// A failed read while live is shown, not hidden behind "Live".
+applyRead(session, read(1000, 2.5, true));
+assert.equal(statusOf(session, ms(3)), 'Live; balance not updated');
+
+// Back to reads after a live stretch: the first two reads are new baselines, because the profile can lag the last
+// fight, so the second read may be the first to show its silver, which was already counted from the fights.
 session = feed(read(1000, 0));
 startLive(session, ms(0.5));
-applyLiveResult(session, 400, ms(1));
-endLive(session);
-applyRead(session, read(1400, 2));
-assert.equal(session.earned, 400);
-applyRead(session, read(1500, 3));
-assert.equal(session.earned, 500);
-assert.equal(statusOf(session, ms(3)), 'Tracking (polled)');
+applyLiveResult(session, 500, ms(1));
+endLive(session, ms(1.1));
+applyRead(session, read(1000, 1.2)); // lags the fight
+applyRead(session, read(1500, 2.2)); // the fight's silver at last
+applyRead(session, read(1600, 3.2));
+assert.equal(session.earned, 600);
+assert.deepEqual(session.intervals.map(interval => interval.gain), [500, 0, 100]);
+assert.equal(statusOf(session, ms(3.2)), 'Tracking (polled)');
+
+// Leaving live keeps the idle time watched since the last fight, so the polled rate doesn't jump: 3,000 silver over
+// 30 minutes of fights and 30 idle is about 3,000 an hour either side of the switch.
+session = feed(read(0, 0));
+startLive(session, ms(0));
+for (let minute = 1; minute <= 30; minute++) applyLiveResult(session, 100, ms(minute));
+assert.equal(Math.round(rateNow(session, ms(60))), 3000);
+endLive(session, ms(60));
+applyRead(session, read(3000, 60.5));
+assert.ok(Math.abs(rateNow(session, ms(60.5)) - 3000) < 100);
 
 // A goal is a whole number above zero, with commas or spaces as separators. Anything else is no goal.
 assert.equal(parseGoal('1,000,000'), 1000000);

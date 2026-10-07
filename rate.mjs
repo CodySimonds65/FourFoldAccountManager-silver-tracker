@@ -10,7 +10,7 @@ export const LIVE_RATE_MIN_MS = 60000;
 export function createSession() {
   return {
     startBalance: null, lastBalance: null, lastAt: null, intervals: [], earned: 0, missed: false, live: null,
-    rebase: false
+    rebase: 0
   };
 }
 
@@ -27,12 +27,12 @@ export function applyRead(session, read) {
     // The fights already count the silver earned; a read only brings the balance up to date.
     session.startBalance ??= read.silver;
     session.missed = false;
-  } else if (session.lastAt === null || session.missed || session.rebase) {
+  } else if (session.lastAt === null || session.missed || session.rebase > 0) {
     // Nothing trustworthy to measure from. FourFold's XP tracker starts over after a missed read too. After a live
     // stretch, the silver between the last read and now was already counted from the fights.
     session.startBalance ??= read.silver;
     session.missed = false;
-    session.rebase = false;
+    session.rebase = Math.max(0, session.rebase - 1);
   } else {
     // Silver earned only: a drop is spending, and adds nothing.
     const gain = Math.max(0, read.silver - session.lastBalance);
@@ -50,22 +50,31 @@ export function startLive(session, at) {
 }
 
 // One fight's reward from battle.onResult. It counts from the last mark (the watch start or the previous fight) to
-// this fight, so the time between fights is in the rate too.
+// this fight, so the time between fights is in the rate too. A result with the same time as the last one came in the
+// same batch of game data, so it joins that fight's interval.
 export function applyLiveResult(session, silver, at) {
-  if (!session.live || !Number.isFinite(at) || at <= session.live.lastMark) return;
+  if (!session.live || !Number.isFinite(at) || at < session.live.lastMark) return;
   const gain = Number.isFinite(silver) ? Math.max(0, silver) : 0;
+  if (at === session.live.lastMark) {
+    const last = session.intervals.at(-1);
+    if (last?.to === at) last.gain += gain;
+    session.earned += gain;
+    return;
+  }
   session.intervals.push({ from: session.live.lastMark, to: at, gain });
   session.earned += gain;
   session.live.lastMark = at;
   session.intervals = session.intervals.filter(interval => interval.to > at - HOUR_MS);
 }
 
-// The feed stopped watching (a disconnect, or the feed switched off). The next read starts a new baseline, because
-// its silver since the last read was already counted from the fights.
-export function endLive(session) {
+// The feed stopped watching at `at` (a disconnect, or the feed switched off). The time since the last fight was
+// watched and earned nothing, so it stays in the rate. The next two reads start a new baseline: their silver since the
+// last read was already counted from the fights, and the profile can lag the last fight by a read.
+export function endLive(session, at) {
   if (!session.live) return;
+  if (at > session.live.lastMark) session.intervals.push({ from: session.live.lastMark, to: at, gain: 0 });
   session.live = null;
-  session.rebase = true;
+  session.rebase = 2;
 }
 
 // Silver per hour over the hour ending at `now`, or null when nothing in that hour was measured. The same sum as
@@ -97,6 +106,7 @@ export function rateNow(session, now) {
 
 // The account's status line. A missed read shows as stale whatever the reason, so old numbers never pass as live.
 export function statusOf(session, now) {
+  if (session.live && session.missed) return 'Live; balance not updated';
   if (session.live) return rateNow(session, now) === null ? 'Live; collecting a minute first' : 'Live';
   if (session.lastAt === null) return 'No data yet';
   if (session.missed) return 'Stale; the last read failed';
